@@ -17,6 +17,9 @@ const categories = [
   '문의사항',
 ]
 
+// 홈 화면에서 게시판별로 보여줄 최신글 개수
+const HOME_POSTS_PER_BOARD = 5
+
 const initialPosts = [
   {
     game: '공지사항',
@@ -67,6 +70,31 @@ function compressImage(file, maxWidth = 800) {
   })
 }
 
+// 작성시간 표시 도우미
+function formatDateTime(value, full = false) {
+  if (!value) return ''
+  const d = new Date(value)
+  if (isNaN(d.getTime())) return ''
+
+  const pad = n => String(n).padStart(2, '0')
+  const yyyy = d.getFullYear()
+  const mm = pad(d.getMonth() + 1)
+  const dd = pad(d.getDate())
+  const hh = pad(d.getHours())
+  const min = pad(d.getMinutes())
+
+  if (full) return `${yyyy}-${mm}-${dd} ${hh}:${min}`
+
+  // 목록에서는 오늘 작성한 글은 시간만, 이전 글은 날짜만 표시
+  const now = new Date()
+  const isToday =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+
+  return isToday ? `${hh}:${min}` : `${yyyy}-${mm}-${dd}`
+}
+
 function App() {
   const [posts, setPosts] = useState([])
   const [loading, setLoading] = useState(true)
@@ -79,11 +107,13 @@ function App() {
   const [nicknameInput, setNicknameInput] = useState('')
   const [passwordInput, setPasswordInput] = useState('')
 
-  const [activeMenu, setActiveMenu] = useState('전체글')
+  // 처음 들어오면 홈 화면
+  const [activeMenu, setActiveMenu] = useState('홈')
   const [activeCategory, setActiveCategory] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
 
-  const [viewMode, setViewMode] = useState('list')
+  // 'home' | 'list' | 'detail' | 'write'
+  const [viewMode, setViewMode] = useState('home')
   const [selectedPostId, setSelectedPostId] = useState(null)
 
   // 글쓰기 / 글수정 상태
@@ -97,12 +127,81 @@ function App() {
   const fileInputRef = useRef(null)
   const [pendingEditorHtml, setPendingEditorHtml] = useState('')
 
+  // popstate(뒤로가기) 핸들러에서 최신 게시글 목록을 확인하기 위한 참조
+  const postsRef = useRef([])
+  postsRef.current = posts
+
   const isAdmin = Boolean(currentUser?.isAdmin)
-  const menuItems = ['전체글', '인기글', '최신글', '공지사항']
+  const menuItems = ['홈', '전체글', '인기글', '최신글', '공지사항']
 
   const writableCategories = isAdmin
     ? categories
     : categories.filter(cat => cat !== '공지사항')
+
+  // ---------- 화면 이동 + 브라우저 히스토리 ----------
+
+  // 저장된 화면 상태를 실제 화면에 반영
+  function applyState(s) {
+    let mode = s.viewMode
+    let postId = s.selectedPostId ?? null
+
+    // 글쓰기 화면은 뒤로/앞으로 가기로 복원하지 않음
+    if (mode === 'write') mode = 'list'
+
+    // 삭제된 글의 상세 화면으로 돌아가려 하면 목록으로
+    if (mode === 'detail' && !postsRef.current.some(p => p.id === postId)) {
+      mode = 'list'
+      postId = null
+    }
+
+    setActiveMenu(s.activeMenu)
+    setActiveCategory(s.activeCategory ?? null)
+    setSelectedPostId(postId)
+    setEditingPostId(null)
+    setCommentInput('')
+    setViewMode(mode)
+  }
+
+  function currentSnapshot() {
+    return { activeMenu, activeCategory, viewMode, selectedPostId }
+  }
+
+  // 새 화면으로 이동하면서 히스토리에 기록 → 뒤로가기로 바로 이전 화면으로 돌아감
+  function navigate(next) {
+    const state = { ...currentSnapshot(), ...next }
+    window.history.pushState(state, '')
+    applyState(state)
+  }
+
+  // 글쓰기/수정 화면은 히스토리만 추가하고 화면 전환은 직접 처리
+  function pushOnly(next) {
+    const state = { ...currentSnapshot(), ...next }
+    window.history.pushState(state, '')
+  }
+
+  // 최초 진입 상태 기록 + 뒤로가기/앞으로가기 처리
+  useEffect(() => {
+    window.history.replaceState(
+      { activeMenu: '홈', activeCategory: null, viewMode: 'home', selectedPostId: null },
+      ''
+    )
+
+    function handlePopState(e) {
+      const s = e.state || {
+        activeMenu: '홈',
+        activeCategory: null,
+        viewMode: 'home',
+        selectedPostId: null,
+      }
+      applyState(s)
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ---------- 데이터 불러오기 ----------
 
   const fetchCommunityData = useCallback(async () => {
     setLoading(true)
@@ -210,6 +309,15 @@ function App() {
     })
   }
 
+  // 홈 화면용: 게시판별 최신글
+  const homeBoards = categories.map(category => ({
+    category,
+    posts: posts
+      .filter(p => p.game === category)
+      .sort((a, b) => b.id - a.id)
+      .slice(0, HOME_POSTS_PER_BOARD),
+  }))
+
   // 에디터 서식 명령 실행
   function applyFormat(command, value = null) {
     if (!editorRef.current) return
@@ -276,19 +384,21 @@ function App() {
   }
 
   function selectMenu(menu) {
-    setActiveMenu(menu)
-    setActiveCategory(null)
-    setEditingPostId(null)
-    setViewMode('list')
-    setSelectedPostId(null)
+    navigate({
+      activeMenu: menu,
+      activeCategory: null,
+      selectedPostId: null,
+      viewMode: menu === '홈' ? 'home' : 'list',
+    })
   }
 
   function selectCategory(category) {
-    setActiveCategory(category)
-    setActiveMenu(category === '공지사항' ? '공지사항' : '전체글')
-    setEditingPostId(null)
-    setViewMode('list')
-    setSelectedPostId(null)
+    navigate({
+      activeCategory: category,
+      activeMenu: category === '공지사항' ? '공지사항' : '전체글',
+      selectedPostId: null,
+      viewMode: 'list',
+    })
   }
 
   function openWriteForm() {
@@ -304,6 +414,7 @@ function App() {
     } else {
       setNewCategory('자유게시판')
     }
+    pushOnly({ viewMode: 'write' })
     setViewMode('write')
   }
 
@@ -315,6 +426,7 @@ function App() {
     const raw = post.content || ''
     const hasHtmlTag = /<[a-z][\s\S]*>/i.test(raw)
     setPendingEditorHtml(hasHtmlTag ? raw : raw.replace(/\n/g, '<br>'))
+    pushOnly({ viewMode: 'write' })
     setViewMode('write')
   }
 
@@ -323,10 +435,7 @@ function App() {
     setPosts(prev =>
       prev.map(p => (p.id === post.id ? { ...p, views: nextViews } : p))
     )
-    setSelectedPostId(post.id)
-    setEditingPostId(null)
-    setCommentInput('')
-    setViewMode('detail')
+    navigate({ viewMode: 'detail', selectedPostId: post.id })
 
     await supabase
       .from('posts')
@@ -371,18 +480,17 @@ function App() {
         return
       }
 
+      const updatedId = editingPostId
       setPosts(prev =>
         prev.map(p =>
-          p.id === editingPostId
+          p.id === updatedId
             ? { ...p, ...data, commentList: p.commentList || [] }
             : p
         )
       )
-      setSelectedPostId(editingPostId)
-      setEditingPostId(null)
       setNewTitle('')
       setPendingEditorHtml('')
-      setViewMode('detail')
+      navigate({ viewMode: 'detail', selectedPostId: updatedId })
       return
     }
 
@@ -415,14 +523,21 @@ function App() {
     setNewTitle('')
     setPendingEditorHtml('')
     setSearchQuery('')
-    setViewMode('list')
 
     if (newCategory === '공지사항') {
-      setActiveMenu('공지사항')
-      setActiveCategory('공지사항')
+      navigate({
+        viewMode: 'list',
+        activeMenu: '공지사항',
+        activeCategory: '공지사항',
+        selectedPostId: null,
+      })
     } else {
-      setActiveMenu('전체글')
-      setActiveCategory(null)
+      navigate({
+        viewMode: 'list',
+        activeMenu: '전체글',
+        activeCategory: null,
+        selectedPostId: null,
+      })
     }
   }
 
@@ -439,8 +554,8 @@ function App() {
     }
 
     setPosts(prev => prev.filter(p => p.id !== postId))
-    setSelectedPostId(null)
-    setViewMode('list')
+    // 삭제 후에는 이전 화면(목록/홈)으로 되돌아감
+    window.history.back()
   }
 
   async function handleToggleLike(postId) {
@@ -535,7 +650,7 @@ function App() {
   return (
     <div className="app">
       <header className="header">
-        <div className="logo" onClick={() => selectMenu('전체글')}>
+        <div className="logo" onClick={() => selectMenu('홈')}>
           GAME<span>COMMUNITY</span>
         </div>
 
@@ -543,7 +658,13 @@ function App() {
           {menuItems.map(menu => (
             <a
               key={menu}
-              className={activeMenu === menu && !activeCategory && viewMode === 'list' ? 'active' : ''}
+              className={
+                activeMenu === menu &&
+                !activeCategory &&
+                (viewMode === 'list' || viewMode === 'home')
+                  ? 'active'
+                  : ''
+              }
               onClick={() => selectMenu(menu)}
             >
               {menu}
@@ -583,6 +704,64 @@ function App() {
 
         <div className="content">
           <section className="main-content">
+            {viewMode === 'home' && (
+              <>
+                <div className="board-header">
+                  <h2>🏠 게시판별 최신글</h2>
+                  <button className="signup" onClick={openWriteForm}>
+                    글쓰기
+                  </button>
+                </div>
+
+                {loading ? (
+                  <p>게시글을 불러오는 중...</p>
+                ) : (
+                  <div className="home-grid">
+                    {homeBoards.map(board => (
+                      <div className="home-card" key={board.category}>
+                        <div className="home-card-header">
+                          <h3>
+                            {board.category === '공지사항'
+                              ? `📢 ${board.category}`
+                              : board.category}
+                          </h3>
+                          <button
+                            type="button"
+                            className="home-more"
+                            onClick={() => selectCategory(board.category)}
+                          >
+                            더보기 ›
+                          </button>
+                        </div>
+
+                        {board.posts.length > 0 ? (
+                          <ul className="home-post-list">
+                            {board.posts.map(post => (
+                              <li
+                                key={post.id}
+                                className="home-post-item"
+                                onClick={() => handlePostClick(post)}
+                              >
+                                <span className="home-post-title">
+                                  {post.title}
+                                  {post.commentList.length > 0 && (
+                                    <em> [{post.commentList.length}]</em>
+                                  )}
+                                </span>
+                                <small>{formatDateTime(post.created_at)}</small>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="home-empty">등록된 글이 없습니다.</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
             {viewMode === 'write' && (
               <form className="write-form" onSubmit={handleCreateOrUpdatePost}>
                 <h2>
@@ -663,11 +842,7 @@ function App() {
                   <button
                     type="button"
                     className="login"
-                    onClick={() => {
-                      const prevId = editingPostId
-                      setEditingPostId(null)
-                      setViewMode(prevId !== null ? 'detail' : 'list')
-                    }}
+                    onClick={() => window.history.back()}
                   >
                     취소
                   </button>
@@ -711,7 +886,8 @@ function App() {
                 </div>
                 <h2>{selectedPost.title}</h2>
                 <small>
-                  작성자 {selectedPost.author || '익명 문파원'} · 조회{' '}
+                  작성자 {selectedPost.author || '익명 문파원'} · 작성{' '}
+                  {formatDateTime(selectedPost.created_at, true)} · 조회{' '}
                   {(selectedPost.views || 0).toLocaleString()} · 추천 {selectedPost.likes || 0} · 댓글{' '}
                   {selectedPost.commentList.length}
                 </small>
@@ -756,7 +932,12 @@ function App() {
                   selectedPost.commentList.map(comment => (
                     <div className="post" key={comment.id}>
                       <div className="comment-header">
-                        <strong>{comment.author || '익명 문파원'}</strong>
+                        <span>
+                          <strong>{comment.author || '익명 문파원'}</strong>
+                          <small style={{ marginLeft: 8, opacity: 0.6 }}>
+                            {formatDateTime(comment.created_at, true)}
+                          </small>
+                        </span>
                         {(isAdmin || myCommentIds.includes(comment.id)) && (
                           <button
                             type="button"
@@ -774,7 +955,7 @@ function App() {
                   <p className="post">첫 번째 댓글을 남겨보세요!</p>
                 )}
 
-                <button className="more" onClick={() => setViewMode('list')}>
+                <button className="more" onClick={() => window.history.back()}>
                   목록으로 돌아가기
                 </button>
               </div>
@@ -837,7 +1018,8 @@ function App() {
                         </span>
                         <strong>{post.title}</strong>
                         <small>
-                          추천 {post.likes || 0} · 댓글 {post.commentList.length} · 조회{' '}
+                          {formatDateTime(post.created_at)} · 추천 {post.likes || 0} · 댓글{' '}
+                          {post.commentList.length} · 조회{' '}
                           {(post.views || 0).toLocaleString()}
                         </small>
                       </div>

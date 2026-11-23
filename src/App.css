@@ -370,3 +370,97 @@ h2 {
   border-color: #7f1d1d;
   color: #fca5a5;
 }
+
+/* ===== 홈 화면: 게시판별 최신글 (App.css 맨 아래에 붙여넣기) ===== */
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.home-card {
+  border: 1px solid rgba(128, 128, 128, 0.3);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: rgba(128, 128, 128, 0.06);
+}
+
+.home-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+}
+
+.home-card-header h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.home-more {
+  background: none;
+  border: none;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.home-more:hover {
+  opacity: 1;
+}
+
+.home-post-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.home-post-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  cursor: pointer;
+}
+
+.home-post-item:hover .home-post-title {
+  text-decoration: underline;
+}
+
+.home-post-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+
+.home-post-title em {
+  font-style: normal;
+  opacity: 0.6;
+  font-size: 12px;
+}
+
+.home-post-item small {
+  flex-shrink: 0;
+  opacity: 0.6;
+  font-size: 12px;
+}
+
+.home-empty {
+  margin: 8px 0 0;
+  opacity: 0.6;
+  font-size: 13px;
+}
+
+/* 모바일: 1열 */
+@media (max-width: 720px) {
+  .home-grid {
+    grid-template-columns: 1fr;
+  }
+}
