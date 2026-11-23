@@ -4,64 +4,75 @@ import './App.css'
 
 const USER_STORAGE_KEY = 'asanmaeng_user_v1'
 
+// 👇 운영자 로그인 정보 (원하는 닉네임과 비밀번호로 변경해서 사용하세요)
+const ADMIN_NICKNAME = '게장'
+const ADMIN_PASSWORD = '1234'
+
+const categories = [
+  '공지사항',
+  '문파컨텐츠',
+  '공략 및 꿀팁',
+  '파티 모집',
+  '자유게시판',
+  '문의사항',
+]
+
 const initialPosts = [
   {
-    game: '도깨비의세계',
-    title: '요즘 사냥터 어디가 가장 효율적인가요?',
-    content: '레벨 50 달성했는데 다음 사냥터 추천 부탁드립니다.',
+    game: '공지사항',
+    title: '아산맹 문파 커뮤니티에 오신 것을 환영합니다!',
+    content: '문파 공지사항과 컨텐츠, 공략 및 꿀팁, 파티 모집을 자유롭게 이용해 주세요.',
+    author: '운영자',
+    likes: 15,
+    views: 500,
+    type: '공지사항',
+  },
+  {
+    game: '문파컨텐츠',
+    title: '이번 주 문파 레이드 및 집결 일정 안내',
+    content: '문파집 문파 집결 예정입니다. 참여 가능하신 분들은 댓글 남겨주세요.',
     author: '문파장',
     likes: 12,
-    views: 1203,
+    views: 320,
     type: '인기글',
   },
   {
-    game: '도깨비의세계',
-    title: '초보자 육성 팁 공유합니다.',
+    game: '공략 및 꿀팁',
+    title: '초보자 육성 팁 및 사냥터 추천 공유합니다.',
     content: '초반에는 메인 퀘스트 위주로 미는 게 가장 빠릅니다.',
     author: '육성왕',
-    likes: 4,
-    views: 320,
-    type: '최신글',
-  },
-  {
-    game: '도깨비의세계',
-    title: '이번 업데이트 밸런스 어떻게 생각하시나요?',
-    content: '원거리 직업군이 조금 상향된 것 같네요.',
-    author: '밸런스분석가',
     likes: 9,
-    views: 856,
+    views: 410,
     type: '인기글',
   },
   {
-    game: '리그 오브 레전드',
-    title: '이번 시즌 정글 티어 정리',
-    content: '현재 1티어 챔피언 위주로 정리해 봤습니다.',
-    author: '정글러',
-    likes: 21,
-    views: 2100,
+    game: '파티 모집',
+    title: '오늘 저녁 주간 던전 파티원 구합니다!',
+    content: '딜러 2분, 서포터 1분 구합니다. 댓글에 닉네임 남겨주세요.',
+    author: '파티장',
+    likes: 6,
+    views: 210,
     type: '인기글',
   },
   {
-    game: '메이플스토리',
-    title: '신규 업데이트 정보 공유',
-    content: '이벤트 코인샵 목록 정리입니다.',
-    author: '메린이',
-    likes: 3,
-    views: 642,
+    game: '자유게시판',
+    title: '오늘 득템하신 분 계신가요?',
+    content: '다들 오늘 하루도 즐겜하세요!',
+    author: '밸런스분석가',
+    likes: 4,
+    views: 185,
     type: '최신글',
   },
   {
-    game: '로스트아크',
-    title: '뉴비가 알아야 할 기본 공략',
-    content: '내실과 레이드 순서 가이드입니다.',
+    game: '문의사항',
+    title: '게시판 이용 관련 건의드립니다.',
+    content: '모바일에서도 잘 보여서 편하네요. 건의사항 남깁니다.',
     author: '모코코',
     likes: 2,
-    views: 450,
+    views: 95,
     type: '최신글',
   },
 ]
-
-const games = ['도깨비의세계', '리그 오브 레전드', '메이플스토리', '로스트아크']
 
 function loadSavedUser() {
   try {
@@ -88,18 +99,23 @@ function App() {
   const [passwordInput, setPasswordInput] = useState('')
 
   const [activeMenu, setActiveMenu] = useState('전체글')
-  const [activeGame, setActiveGame] = useState(null)
+  const [activeCategory, setActiveCategory] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
 
   const [viewMode, setViewMode] = useState('list')
   const [selectedPostId, setSelectedPostId] = useState(null)
 
-  const [newGame, setNewGame] = useState(games[0])
+  const [newCategory, setNewCategory] = useState('자유게시판')
   const [newTitle, setNewTitle] = useState('')
   const [newContent, setNewContent] = useState('')
   const [commentInput, setCommentInput] = useState('')
 
+  const isAdmin = Boolean(currentUser?.isAdmin)
   const menuItems = ['전체글', '인기글', '최신글', '공지사항']
+
+  const writableCategories = isAdmin
+    ? categories
+    : categories.filter(cat => cat !== '공지사항')
 
   const fetchCommunityData = useCallback(async () => {
     setLoading(true)
@@ -168,25 +184,36 @@ function App() {
 
   const selectedPost = posts.find(p => p.id === selectedPostId) || null
 
-  let visiblePosts = posts
-  if (activeGame) {
-    visiblePosts = visiblePosts.filter(post => post.game === activeGame)
-  }
-  if (activeMenu === '인기글') {
-    visiblePosts = visiblePosts.filter(post => post.type === '인기글' || (post.likes || 0) >= 5)
-  }
-  if (activeMenu === '최신글') {
-    visiblePosts = visiblePosts.filter(post => post.type === '최신글')
-  }
-  if (activeMenu === '공지사항') {
-    visiblePosts = []
+  let visiblePosts = [...posts]
+
+  if (activeCategory) {
+    visiblePosts = visiblePosts.filter(post => post.game === activeCategory)
+  } else if (activeMenu === '공지사항') {
+    visiblePosts = visiblePosts.filter(
+      post => post.game === '공지사항' || post.type === '공지사항'
+    )
+  } else if (activeMenu === '인기글') {
+    visiblePosts = visiblePosts.filter(
+      post => post.type === '인기글' || (post.likes || 0) >= 5
+    )
+  } else if (activeMenu === '최신글') {
+    visiblePosts = visiblePosts.filter(post => post.game !== '공지사항')
   }
 
   const trimmedQuery = searchQuery.trim().toLowerCase()
-  if (trimmedQuery && activeMenu !== '공지사항') {
+  if (trimmedQuery) {
     visiblePosts = visiblePosts.filter(post =>
       post.title.toLowerCase().includes(trimmedQuery)
     )
+  }
+
+  if (!activeCategory && activeMenu === '전체글') {
+    visiblePosts.sort((a, b) => {
+      const aNotice = a.game === '공지사항' || a.type === '공지사항' ? 1 : 0
+      const bNotice = b.game === '공지사항' || b.type === '공지사항' ? 1 : 0
+      if (aNotice !== bNotice) return bNotice - aNotice
+      return b.id - a.id
+    })
   }
 
   function openAuthModal(mode) {
@@ -198,12 +225,27 @@ function App() {
   function handleAuthSubmit(e) {
     e.preventDefault()
     const cleanName = nicknameInput.trim()
-    if (!cleanName || !passwordInput.trim()) {
+    const cleanPw = passwordInput.trim()
+
+    if (!cleanName || !cleanPw) {
       alert('닉네임과 비밀번호를 모두 입력해주세요.')
       return
     }
 
-    setCurrentUser({ nickname: cleanName })
+    if (cleanName === ADMIN_NICKNAME) {
+      if (authModal === 'signup') {
+        alert('해당 닉네임은 운영자 전용입니다. 로그인을 이용해주세요.')
+        return
+      }
+      if (cleanPw !== ADMIN_PASSWORD) {
+        alert('운영자 비밀번호가 일치하지 않습니다.')
+        return
+      }
+      setCurrentUser({ nickname: cleanName, isAdmin: true })
+    } else {
+      setCurrentUser({ nickname: cleanName, isAdmin: false })
+    }
+
     setAuthModal(null)
     setNicknameInput('')
     setPasswordInput('')
@@ -215,16 +257,28 @@ function App() {
 
   function selectMenu(menu) {
     setActiveMenu(menu)
-    setActiveGame(null)
+    setActiveCategory(null)
     setViewMode('list')
     setSelectedPostId(null)
   }
 
-  function selectGame(game) {
-    setActiveGame(game)
-    setActiveMenu('전체글')
+  function selectCategory(category) {
+    setActiveCategory(category)
+    setActiveMenu(category === '공지사항' ? '공지사항' : '전체글')
     setViewMode('list')
     setSelectedPostId(null)
+  }
+
+  function openWriteForm() {
+    const isNoticeContext = activeMenu === '공지사항' || activeCategory === '공지사항'
+    if (isNoticeContext && isAdmin) {
+      setNewCategory('공지사항')
+    } else if (activeCategory && activeCategory !== '공지사항') {
+      setNewCategory(activeCategory)
+    } else {
+      setNewCategory('자유게시판')
+    }
+    setViewMode('write')
   }
 
   async function handlePostClick(post) {
@@ -249,19 +303,25 @@ function App() {
       return
     }
 
+    if (newCategory === '공지사항' && !isAdmin) {
+      alert('공지사항은 운영자만 작성할 수 있습니다.')
+      return
+    }
+
     const authorName = currentUser ? currentUser.nickname : '익명 문파원'
+    const postType = newCategory === '공지사항' ? '공지사항' : '최신글'
 
     const { data, error } = await supabase
       .from('posts')
       .insert([
         {
-          game: newGame,
+          game: newCategory,
           title: newTitle.trim(),
           content: newContent.trim(),
           author: authorName,
           likes: 0,
           views: 1,
-          type: '최신글',
+          type: postType,
         },
       ])
       .select()
@@ -279,8 +339,14 @@ function App() {
     setNewContent('')
     setSearchQuery('')
     setViewMode('list')
-    setActiveMenu('전체글')
-    setActiveGame(null)
+
+    if (newCategory === '공지사항') {
+      setActiveMenu('공지사항')
+      setActiveCategory('공지사항')
+    } else {
+      setActiveMenu('전체글')
+      setActiveCategory(null)
+    }
   }
 
   async function handleDeletePost(postId) {
@@ -290,7 +356,7 @@ function App() {
     const { error } = await supabase.from('posts').delete().eq('id', postId)
 
     if (error) {
-      alert('게시글 삭제 중 오류가 발생했습니다.')
+      alert(`게시글 삭제 실패: ${error.message}`)
       console.error(error)
       return
     }
@@ -367,7 +433,7 @@ function App() {
       .eq('id', commentId)
 
     if (error) {
-      alert('댓글 삭제 중 오류가 발생했습니다.')
+      alert(`댓글 삭제 실패: ${error.message}`)
       console.error(error)
       return
     }
@@ -384,6 +450,9 @@ function App() {
     )
   }
 
+  const isNoticeBoard = activeMenu === '공지사항' || activeCategory === '공지사항'
+  const canWrite = !isNoticeBoard || isAdmin
+
   return (
     <div className="app">
       <header className="header">
@@ -395,7 +464,7 @@ function App() {
           {menuItems.map(menu => (
             <a
               key={menu}
-              className={activeMenu === menu && !activeGame && viewMode === 'list' ? 'active' : ''}
+              className={activeMenu === menu && !activeCategory && viewMode === 'list' ? 'active' : ''}
               onClick={() => selectMenu(menu)}
             >
               {menu}
@@ -406,7 +475,9 @@ function App() {
         <div className="account">
           {currentUser ? (
             <>
-              <span className="user-badge">{currentUser.nickname}님</span>
+              <span className="user-badge">
+                {isAdmin ? `👑 ${currentUser.nickname} (운영자)` : `${currentUser.nickname}님`}
+              </span>
               <button className="login" onClick={handleLogout}>
                 로그아웃
               </button>
@@ -435,10 +506,12 @@ function App() {
           <section className="main-content">
             {viewMode === 'write' && (
               <form className="write-form" onSubmit={handleCreatePost}>
-                <h2>✍️ 새 게시글 작성</h2>
-                <select value={newGame} onChange={e => setNewGame(e.target.value)}>
-                  {games.map(g => (
-                    <option key={g} value={g}>{g}</option>
+                <h2>{newCategory === '공지사항' ? '📢 공지사항 작성' : '✍️ 새 게시글 작성'}</h2>
+                <select value={newCategory} onChange={e => setNewCategory(e.target.value)}>
+                  {writableCategories.map(cat => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
                   ))}
                 </select>
                 <input
@@ -458,7 +531,7 @@ function App() {
                     취소
                   </button>
                   <button type="submit" className="signup">
-                    등록하기
+                    {newCategory === '공지사항' ? '공지 등록하기' : '등록하기'}
                   </button>
                 </div>
               </form>
@@ -467,13 +540,17 @@ function App() {
             {viewMode === 'detail' && selectedPost && (
               <div className="post-detail">
                 <div className="detail-top">
-                  <span className="badge">{selectedPost.game}</span>
-                  {myPostIds.includes(selectedPost.id) && (
+                  <span className="badge">
+                    {selectedPost.game === '공지사항' ? '📢 공지사항' : selectedPost.game}
+                  </span>
+                  {(isAdmin || myPostIds.includes(selectedPost.id)) && (
                     <button
                       className="delete-btn"
                       onClick={() => handleDeletePost(selectedPost.id)}
                     >
-                      삭제하기
+                      {isAdmin && !myPostIds.includes(selectedPost.id)
+                        ? '운영자 권한 삭제'
+                        : '삭제하기'}
                     </button>
                   )}
                 </div>
@@ -518,7 +595,7 @@ function App() {
                     <div className="post" key={comment.id}>
                       <div className="comment-header">
                         <strong>{comment.author || '익명 문파원'}</strong>
-                        {myCommentIds.includes(comment.id) && (
+                        {(isAdmin || myCommentIds.includes(comment.id)) && (
                           <button
                             type="button"
                             className="comment-delete-btn"
@@ -545,69 +622,65 @@ function App() {
               <>
                 <div className="board-header">
                   <h2>
-                    {activeGame
-                      ? `🎮 ${activeGame} 게시판`
-                      : activeMenu === '공지사항'
-                        ? '📢 공지사항'
+                    {activeCategory === '공지사항' || activeMenu === '공지사항'
+                      ? '📢 공지사항'
+                      : activeCategory
+                        ? `📌 ${activeCategory}`
                         : activeMenu === '인기글'
                           ? '🔥 인기 게시글'
                           : activeMenu === '최신글'
                             ? '📝 최신 게시글'
                             : '📋 전체 게시글'}
                   </h2>
-                  {activeMenu !== '공지사항' && (
-                    <button className="signup" onClick={() => setViewMode('write')}>
-                      글쓰기
+                  {canWrite && (
+                    <button className="signup" onClick={openWriteForm}>
+                      {isNoticeBoard && isAdmin ? '공지사항 쓰기' : '글쓰기'}
                     </button>
                   )}
                 </div>
 
-                {activeMenu !== '공지사항' && (
-                  <div className="search-bar">
-                    <input
-                      type="text"
-                      placeholder="🔍 게시글 제목 검색..."
-                      value={searchQuery}
-                      onChange={e => setSearchQuery(e.target.value)}
-                    />
-                    {searchQuery && (
-                      <button
-                        type="button"
-                        className="login"
-                        onClick={() => setSearchQuery('')}
-                      >
-                        초기화
-                      </button>
-                    )}
-                  </div>
-                )}
+                <div className="search-bar">
+                  <input
+                    type="text"
+                    placeholder="🔍 게시글 제목 검색..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      className="login"
+                      onClick={() => setSearchQuery('')}
+                    >
+                      초기화
+                    </button>
+                  )}
+                </div>
 
                 {loading ? (
                   <p>게시글을 불러오는 중...</p>
-                ) : activeMenu === '공지사항' ? (
-                  <div className="post">
-                    <span>운영진</span>
-                    <strong>GAME COMMUNITY에 오신 것을 환영합니다!</strong>
-                    <small>공지사항</small>
-                  </div>
                 ) : visiblePosts.length > 0 ? (
-                  visiblePosts.map(post => (
-                    <div
-                      className="post clickable"
-                      key={post.id}
-                      onClick={() => handlePostClick(post)}
-                    >
-                      <span>
-                        {post.game} · {post.author || '익명 문파원'}
-                        {myPostIds.includes(post.id) ? ' (내 글)' : ''}
-                      </span>
-                      <strong>{post.title}</strong>
-                      <small>
-                        추천 {post.likes || 0} · 댓글 {post.commentList.length} · 조회{' '}
-                        {(post.views || 0).toLocaleString()}
-                      </small>
-                    </div>
-                  ))
+                  visiblePosts.map(post => {
+                    const isNotice = post.game === '공지사항' || post.type === '공지사항'
+                    return (
+                      <div
+                        className="post clickable"
+                        key={post.id}
+                        onClick={() => handlePostClick(post)}
+                      >
+                        <span>
+                          {isNotice ? '📢 [공지] ' : `${post.game} · `}
+                          {post.author || '익명 문파원'}
+                          {myPostIds.includes(post.id) ? ' (내 글)' : ''}
+                        </span>
+                        <strong>{post.title}</strong>
+                        <small>
+                          추천 {post.likes || 0} · 댓글 {post.commentList.length} · 조회{' '}
+                          {(post.views || 0).toLocaleString()}
+                        </small>
+                      </div>
+                    )
+                  })
                 ) : (
                   <p>
                     {trimmedQuery
@@ -620,15 +693,15 @@ function App() {
           </section>
 
           <aside>
-            <h2>🎮 게임 커뮤니티</h2>
+            <h2>📌 게시판 메뉴</h2>
 
-            {games.map(game => (
+            {categories.map(category => (
               <div
-                className={`game ${activeGame === game ? 'selected' : ''}`}
-                key={game}
-                onClick={() => selectGame(game)}
+                className={`game ${activeCategory === category ? 'selected' : ''}`}
+                key={category}
+                onClick={() => selectCategory(category)}
               >
-                {game} <b>›</b>
+                {category === '공지사항' ? `📢 ${category}` : category} <b>›</b>
               </div>
             ))}
 
