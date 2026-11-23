@@ -13,12 +13,28 @@ const categories = [
   '문파컨텐츠',
   '공략 및 꿀팁',
   '파티 모집',
+  '거래게시판',
   '자유게시판',
+  '문의사항',
+]
+
+// 홈 화면에 보이는 순서 ('최신글'은 전체 게시판의 최신글 모음)
+const HOME_ORDER = [
+  '공지사항',
+  '최신글',
+  '자유게시판',
+  '파티 모집',
+  '거래게시판',
+  '문파컨텐츠',
+  '공략 및 꿀팁',
   '문의사항',
 ]
 
 // 홈 화면에서 게시판별로 보여줄 최신글 개수
 const HOME_POSTS_PER_BOARD = 5
+
+// 홈 화면 '최신글' 박스에 보여줄 개수
+const HOME_LATEST_COUNT = 6
 
 const initialPosts = [
   {
@@ -61,6 +77,37 @@ function compressImage(file, maxWidth = 800) {
         const ctx = canvas.getContext('2d')
         ctx.drawImage(img, 0, 0, width, height)
         resolve(canvas.toDataURL('image/jpeg', 0.8))
+      }
+      img.onerror = reject
+      img.src = e.target.result
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+// 대문 사진용: 이미지를 줄여서 파일(Blob)로 변환
+function compressImageToBlob(file, maxWidth = 1600) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = e => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        let width = img.width
+        let height = img.height
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width)
+          width = maxWidth
+        }
+        canvas.width = width
+        canvas.height = height
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height)
+        canvas.toBlob(
+          blob => (blob ? resolve(blob) : reject(new Error('이미지 변환 실패'))),
+          'image/jpeg',
+          0.85
+        )
       }
       img.onerror = reject
       img.src = e.target.result
@@ -126,6 +173,11 @@ function App() {
   const editorRef = useRef(null)
   const fileInputRef = useRef(null)
   const [pendingEditorHtml, setPendingEditorHtml] = useState('')
+
+  // 대문 사진
+  const bannerInputRef = useRef(null)
+  const [bannerUrl, setBannerUrl] = useState('')
+  const [bannerUploading, setBannerUploading] = useState(false)
 
   // popstate(뒤로가기) 핸들러에서 최신 게시글 목록을 확인하기 위한 참조
   const postsRef = useRef([])
@@ -256,6 +308,88 @@ function App() {
     fetchCommunityData()
   }, [fetchCommunityData])
 
+  // 대문 사진 주소 불러오기
+  useEffect(() => {
+    async function fetchBanner() {
+      const { data, error } = await supabase
+        .from('site_settings')
+        .select('value')
+        .eq('key', 'banner_url')
+        .maybeSingle()
+      if (error) {
+        console.error('대문 사진 불러오기 실패:', error)
+        return
+      }
+      setBannerUrl(data?.value || '')
+    }
+    fetchBanner()
+  }, [])
+
+  // 이전 대문 사진 파일 삭제 (실패해도 무시)
+  async function removeOldBannerFile(oldUrl) {
+    try {
+      const marker = '/banners/'
+      const idx = oldUrl.indexOf(marker)
+      if (idx === -1) return
+      const path = decodeURIComponent(oldUrl.slice(idx + marker.length).split('?')[0])
+      await supabase.storage.from('banners').remove([path])
+    } catch (err) {
+      console.error('이전 대문 사진 삭제 실패:', err)
+    }
+  }
+
+  // 운영자: 대문 사진 업로드
+  async function handleBannerUpload(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file || !isAdmin) return
+
+    setBannerUploading(true)
+    try {
+      const blob = await compressImageToBlob(file, 1600)
+      const fileName = `banner-${Date.now()}.jpg`
+
+      const { error: uploadError } = await supabase.storage
+        .from('banners')
+        .upload(fileName, blob, { contentType: 'image/jpeg' })
+      if (uploadError) throw uploadError
+
+      const { data: urlData } = supabase.storage.from('banners').getPublicUrl(fileName)
+      const newUrl = urlData.publicUrl
+
+      const { error: saveError } = await supabase
+        .from('site_settings')
+        .upsert({ key: 'banner_url', value: newUrl })
+      if (saveError) throw saveError
+
+      const oldUrl = bannerUrl
+      setBannerUrl(newUrl)
+      if (oldUrl) removeOldBannerFile(oldUrl)
+    } catch (err) {
+      console.error(err)
+      alert(`대문 사진 업로드 실패: ${err.message || '알 수 없는 오류'}`)
+    } finally {
+      setBannerUploading(false)
+    }
+  }
+
+  // 운영자: 대문 사진 기본값으로 되돌리기
+  async function handleBannerReset() {
+    if (!isAdmin || !bannerUrl) return
+    if (!window.confirm('대문 사진을 삭제하고 기본 화면으로 되돌릴까요?')) return
+
+    const { error } = await supabase
+      .from('site_settings')
+      .upsert({ key: 'banner_url', value: '' })
+    if (error) {
+      alert(`대문 사진 삭제 실패: ${error.message}`)
+      console.error(error)
+      return
+    }
+    removeOldBannerFile(bannerUrl)
+    setBannerUrl('')
+  }
+
   useEffect(() => {
     try {
       if (currentUser) {
@@ -310,13 +444,26 @@ function App() {
   }
 
   // 홈 화면용: 게시판별 최신글
-  const homeBoards = categories.map(category => ({
-    category,
-    posts: posts
-      .filter(p => p.game === category)
-      .sort((a, b) => b.id - a.id)
-      .slice(0, HOME_POSTS_PER_BOARD),
-  }))
+  const homeBoards = HOME_ORDER.map(name => {
+    if (name === '최신글') {
+      return {
+        category: '최신글',
+        isLatest: true,
+        posts: posts
+          .filter(p => p.game !== '공지사항' && p.type !== '공지사항')
+          .sort((a, b) => b.id - a.id)
+          .slice(0, HOME_LATEST_COUNT),
+      }
+    }
+    return {
+      category: name,
+      isLatest: false,
+      posts: posts
+        .filter(p => p.game === name)
+        .sort((a, b) => b.id - a.id)
+        .slice(0, HOME_POSTS_PER_BOARD),
+    }
+  })
 
   // 에디터 서식 명령 실행
   function applyFormat(command, value = null) {
@@ -696,10 +843,51 @@ function App() {
       </header>
 
       <main>
-        <section className="welcome">
+        <section
+          className={`welcome ${bannerUrl ? 'has-banner' : ''}`}
+          style={
+            bannerUrl
+              ? {
+                  backgroundImage: `linear-gradient(rgba(0,0,0,0.45), rgba(0,0,0,0.45)), url("${bannerUrl}")`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                }
+              : undefined
+          }
+        >
           <p>ALL GAMES, ONE COMMUNITY</p>
           <h1>아산맹 문파</h1>
           <span>다양한 게임의 소식과 공략, 이야기를 나눠보세요.</span>
+
+          {isAdmin && (
+            <div className="banner-admin">
+              <button
+                type="button"
+                className="login"
+                disabled={bannerUploading}
+                onClick={() => bannerInputRef.current?.click()}
+              >
+                {bannerUploading ? '업로드 중...' : '🖼️ 대문 사진 변경'}
+              </button>
+              {bannerUrl && (
+                <button
+                  type="button"
+                  className="login"
+                  disabled={bannerUploading}
+                  onClick={handleBannerReset}
+                >
+                  사진 삭제
+                </button>
+              )}
+              <input
+                ref={bannerInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={handleBannerUpload}
+              />
+            </div>
+          )}
         </section>
 
         <div className="content">
@@ -723,12 +911,18 @@ function App() {
                           <h3>
                             {board.category === '공지사항'
                               ? `📢 ${board.category}`
-                              : board.category}
+                              : board.isLatest
+                                ? '📝 최신글'
+                                : board.category}
                           </h3>
                           <button
                             type="button"
                             className="home-more"
-                            onClick={() => selectCategory(board.category)}
+                            onClick={() =>
+                              board.isLatest
+                                ? selectMenu('최신글')
+                                : selectCategory(board.category)
+                            }
                           >
                             더보기 ›
                           </button>
@@ -743,6 +937,9 @@ function App() {
                                 onClick={() => handlePostClick(post)}
                               >
                                 <span className="home-post-title">
+                                  {board.isLatest && (
+                                    <em className="home-post-board">[{post.game}] </em>
+                                  )}
                                   {post.title}
                                   {post.commentList.length > 0 && (
                                     <em> [{post.commentList.length}]</em>
