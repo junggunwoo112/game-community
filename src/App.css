@@ -656,3 +656,20 @@ h2 {
   color: #fff;
   font-size: 18px;
 }
+
+/* ===== 댓글 글자 크기 ===== */
+.post-detail .post > span {
+  font-size: 15px;
+  line-height: 1.6;
+  color: #e5e7eb;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.post-detail .comment-header strong {
+  font-size: 15px;
+}
+
+.post-detail .comment-header small {
+  font-size: 12px;
+}
