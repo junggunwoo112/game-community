@@ -174,6 +174,18 @@ function App() {
   const fileInputRef = useRef(null)
   const [pendingEditorHtml, setPendingEditorHtml] = useState('')
 
+  // 글 속 사진 크게 보기
+  const [lightboxSrc, setLightboxSrc] = useState(null)
+
+  useEffect(() => {
+    if (!lightboxSrc) return
+    function onKey(e) {
+      if (e.key === 'Escape') setLightboxSrc(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [lightboxSrc])
+
   // 대문 사진
   const bannerInputRef = useRef(null)
   const [bannerUrl, setBannerUrl] = useState('')
@@ -1091,6 +1103,9 @@ function App() {
                 <hr />
                 <div
                   className="post-body"
+                  onClick={e => {
+                    if (e.target.tagName === 'IMG') setLightboxSrc(e.target.src)
+                  }}
                   dangerouslySetInnerHTML={{
                     __html: /<[a-z][\s\S]*>/i.test(selectedPost.content || '')
                       ? selectedPost.content
@@ -1252,6 +1267,20 @@ function App() {
           </aside>
         </div>
       </main>
+
+      {lightboxSrc && (
+        <div className="lightbox" onClick={() => setLightboxSrc(null)}>
+          <button
+            type="button"
+            className="lightbox-close"
+            onClick={() => setLightboxSrc(null)}
+            aria-label="닫기"
+          >
+            ✕
+          </button>
+          <img src={lightboxSrc} alt="확대 이미지" onClick={e => e.stopPropagation()} />
+        </div>
+      )}
 
       {authModal && (
         <div className="modal-backdrop" onClick={() => setAuthModal(null)}>
